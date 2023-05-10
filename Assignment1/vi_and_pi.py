@@ -55,7 +55,7 @@ the parameters P, nS, nA, gamma are defined as follows:
 """
 
 
-def policy_evaluation(P, policy, value_function, gamma=0.9, tol=1e-3):
+def policy_evaluation(P, nS, nA, policy, gamma=0.9, tol=1e-3):
     """Evaluate the value function from a given policy.
 
 	Parameters
@@ -74,20 +74,27 @@ def policy_evaluation(P, policy, value_function, gamma=0.9, tol=1e-3):
 		the value of state s
 	"""
 
-    #value_function = np.zeros(nS)
+    value_function = np.zeros(nS)
 
     ############################
     # YOUR IMPLEMENTATION HERE #
 
+
     while True:
-        new_v_function = np.copy(value_function)
-        for s, a in enumerate(policy):
-            prob, next_s, reward, terminal = P[s][a][0]
-            new_v_function[s] = reward + gamma * prob * value_function[next_s]
-        value_change = np.sum(np.abs(value_function - new_v_function))
-        value_function = new_v_function
-        if value_change < tol:
+        new_value_function = np.zeros(nS)
+
+        for s in range(nS):
+            action = policy[s]
+            transitions = P[s][action]
+            for prob, next_s, reward, done in transitions:
+                new_value_function[s] += prob * (reward + gamma * value_function[next_s] * (not done))
+
+        if np.max(np.abs(new_value_function - value_function)) < tol:
             break
+
+        value_function = new_value_function
+
+    return value_function
 
     ############################
     return value_function
@@ -113,18 +120,19 @@ def policy_improvement(P, nS, nA, value_from_policy, policy, gamma=0.9):
 		given value function.
 	"""
 
-	# new_policy = np.zeros(nS, dtype='int')
-    new_policy = np.copy(policy) # Important
+    new_policy = np.zeros(nS, dtype=int)
 
     ############################
     # YOUR IMPLEMENTATION HERE #
     
     for s in range(nS):
-        action_reward = []
+        q_values = np.zeros(nA)
         for a in range(nA):
-            prob, next_s, reward, terminal = P[s][a][0]
-            action_reward.append(reward + gamma * prob * value_from_policy[next_s])
-        new_policy[s] = np.argmax(action_reward)
+            transitions = P[s][a]
+            for prob, next_s, reward, done in transitions:
+                q_values[a] += prob * (reward + gamma * value_from_policy[next_s] * (not done))
+        new_policy[s] = np.argmax(q_values)
+
 
     ############################
     return new_policy
@@ -153,16 +161,21 @@ def policy_iteration(P, nS, nA, gamma=0.9, tol=1e-3):
 
     ############################
     # YOUR IMPLEMENTATION HERE #
+    policy = np.random.randint(nA, size=nS)
+
     while True:
         # Policy evaluation
-        value_function = policy_evaluation(P, policy, value_function, gamma, tol)
+        value_function = policy_evaluation(P, nS, nA, policy, gamma, tol)
+
         # Policy improvement
         new_policy = policy_improvement(P, nS, nA, value_function, policy, gamma)
-        policy_change = (new_policy != policy).sum()
-        print('policy changed in %d states' % (policy_change))
-        policy = new_policy
-        if policy_change == 0:
+
+        # Check for convergence
+        if np.all(new_policy == policy):
             break
+
+        policy = new_policy
+
 
     ############################
     return value_function, policy
@@ -190,26 +203,25 @@ def value_iteration(P, nS, nA, gamma=0.9, tol=1e-3):
     policy = np.zeros(nS, dtype=int)
     ############################
     # YOUR IMPLEMENTATION HERE #
+    value_function = np.zeros(nS)
+
     while True:
-        new_v_function = np.copy(value_function)
+        # Compute the state-action value function
+        q_function = np.zeros((nS, nA))
         for s in range(nS):
-            action_reward = []
             for a in range(nA):
                 prob, next_s, reward, terminal = P[s][a][0]
-                action_reward.append(reward + gamma * prob * new_v_function[next_s])
-            new_v_function[s] = np.max(action_reward)
-        value_change = np.sum(np.abs(value_function - new_v_function))
-        value_function = new_v_function
-        if value_change < tol:
+                q_function[s][a] = reward + gamma * prob * value_function[next_s]
+
+        # Compute the new value function and policy
+        new_value_function = np.max(q_function, axis=1)
+        policy = np.argmax(q_function, axis=1)
+
+        # Check for convergence
+        if np.max(np.abs(new_value_function - value_function)) < tol:
             break
 
-	# Get best policy
-    for s in range(nS):
-        action_reward = []
-        for a in range(nA):
-            rob, next_s, reward, terminal = P[s][a][0]
-            action_reward.append(reward + gamma * prob * new_v_function[next_s])
-        policy[s] = np.argmax(action_reward)
+        value_function = new_value_function
 
     ############################
     return value_function, policy
@@ -273,4 +285,6 @@ if __name__ == "__main__":
 
     V_vi, p_vi = value_iteration(env.P, env.nS, env.nA, gamma=0.9, tol=1e-3)
     render_single(env, p_vi, 100)
+
+
 
